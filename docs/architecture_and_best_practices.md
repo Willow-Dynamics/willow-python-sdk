@@ -73,6 +73,28 @@ The `PhysicsEvaluator` uses continuous numerical gradients ($d/dt$) to calculate
 
 ---
 
+## Part 3: Model Sourcing Strategy (Synthetic vs. Empirical)
+
+When provisioning models via the Willow Cloud for your application, the source of the model (FBX vs. Video) dictates the resilience of the SDK on your edge hardware.
+
+### 1. Synthetic Models (Source: FBX / Motion Capture)
+**Definition:** Models created by importing clean animation data (FBX) or professional Motion Capture (MoCap) data.
+**Characteristics:** These models are mathematically perfect. There is no occlusion, and the Z-axis depth is absolute ground truth.
+**Deployment Target:** Best for **Robotics, VR Headsets, and Multi-Camera Arrays**.
+*   **The Caveat:** Because these models are perfect, they are intolerant of the depth distortion artifacts inherent in single 2D cameras. If you use a perfect FBX model on a cheap 2D webcam, the SDK may reject valid user actions because the user's inferred depth map looks "warped" compared to the perfect ground truth.
+
+### 2. Empirical Models (Source: RGB Video)
+**Definition:** Models created by uploading a standard 2D video of a human performing the action.
+**Characteristics:** These models contain **"Baked-in Bias."** The AI pose estimator used to create the model made specific errors in guessing the depth (Z-axis) based on the camera angle.
+**Deployment Target:** Best for **Mobile Phones, Webcams, and Single-Camera Edge Devices**.
+*   **The "Bias Matching" Phenomenon:** For single-camera apps, an Empirical Model often outperforms a Synthetic Model. Why? Because the pose estimator on the user's phone will likely make the *exact same depth-guessing errors* that the pose estimator made when creating the model. Because the live errors match the model's baked-in errors, the mathematical distance remains low, and recognition succeeds.
+
+### 3. Summary Recommendation
+*   **If you control the hardware** (e.g., a robot with a depth sensor): Use Synthetic (FBX) models for maximum precision.
+*   **If you rely on user hardware** (e.g., a consumer mobile app): Use Empirical (Video) models recorded at an angle similar to the expected user setup.
+
+---
+
 ## Summary: Building on the Willow Standard
 
 The Willow 5 Runtime is an extraordinarily powerful, ultra-compressed mathematics engine. By distilling massive neural networks into lightweight `.int8` signatures, we allow you to deploy complex spatial intelligence to microcontrollers and headsets that previously lacked the compute power to run them.
@@ -81,5 +103,6 @@ However, the SDK is a deterministic engine. It treats the data you give it as th
 1. **Filter your sensor streams.**
 2. **Control your camera environments.**
 3. **Constrain your robotic actuators.**
+4. **Match your model source to your deployment hardware.**
 
 If you control the physical inputs, the Willow SDK will flawlessly handle the spatial intelligence.

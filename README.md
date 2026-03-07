@@ -105,6 +105,7 @@ print(f"Elbow Flexion: {angles['right_elbow_flexion']}")
 ---
 
 ## Documentation Sections
+- [Architecture & Best Practices](./docs/architecture_and_best_practices.md) - Understand how the Willow system functions.
 - [Model Provisioning](./docs/provisioning.md) - How to fetch, cache, and manage secure models.
 - [Coordinate Transforms](./docs/transforms.md) - Bridging Willow to ROS, Unity, and Unreal.
 - [Robotics & Retargeting](./docs/retargeting.md) - Extracting joint angles for RL & Simulation.
@@ -113,7 +114,7 @@ print(f"Elbow Flexion: {angles['right_elbow_flexion']}")
 
 ## Support & Licensing
 The Willow Runtime is a premium commercial service. A **Partner License** is required to provision models.
-- [Request a License](https://willowdynamics.com/pages/licensing)
-- [Technical Support](mailto:support@willowdynamics.com)
+- [Request a License](https://willowdynamics.com/pages/contact)
+- [Technical Support](https://willowdynamics.com/pages/contact)
 
 &copy; 2025 Willow Dynamics. All rights reserved.

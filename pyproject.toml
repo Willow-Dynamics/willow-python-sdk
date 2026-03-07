@@ -3,7 +3,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "willow-runtime"
-version = "5.2.1"
+version = "5.2.2"
 description = "Willow 5 Runtime: Action Recognition, Retargeting, & Edge Evaluator"
 readme = "README.md"
 authors = [{ name = "Willow Dynamics" }]

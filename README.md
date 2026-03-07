@@ -1,10 +1,17 @@
-# Willow 5 Runtime SDK
+# Willow 5 Runtime SDK (Python)
 
-The official Python SDK for **Willow Dynamics**.
+[![Version](https://img.shields.io/pypi/v/willow-runtime)](https://pypi.org/project/willow-runtime/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This SDK acts as the bridge between the Willow Cloud Oracle and your local environment. It enables **Zero-Shot Action Recognition**, **Kinematic Retargeting**, and **Physics Evaluation** on edge devices, cloud pipelines, and simulation clusters.
+The **Willow 5 Runtime SDK** is the local execution environment for the Willow Dynamics platform.
 
-It is designed to be dependency-light (No AWS/Boto3 required) and privacy-first (Models run in ephemeral RAM).
+While the Willow Cloud is used to *train and generate* proprietary Action Models, this SDK allows you to *download and execute* those models locally on your own hardware. It acts as the bridge between Willow's biomechanical intelligence and your edge devices, robotics, or reinforcement learning simulations.
+
+## Core Capabilities
+- **Local Execution**: Run Zero-Shot Action Recognition entirely on your device using `.int8` binary signatures.
+- **Sim-to-Real Retargeting**: Convert Computer Vision coordinates (MediaPipe) into ROS (Z-Up) and Unity formats natively.
+- **Edge Physics**: Calculate Jerk, Acceleration, and Power without cloud latency using the ported Da Vinci engine.
+- **DRM-Compliant**: Models can load securely into ephemeral RAM to protect Intellectual Property.
 
 ---
 
@@ -16,35 +23,36 @@ pip install willow-runtime
 
 ---
 
-## 1. Quick Start: Model Provisioning
+## Configuration
 
-Securely fetch your proprietary action models from the Willow Cloud.
+To fetch models, you must initialize the `WillowClient` with credentials provided in your Partner Dashboard:
+
+1.  **API URL**: The endpoint of your dedicated Willow Gateway.
+2.  **API Key**: Your secure access token (authenticates the connection).
+3.  **Customer ID**: Your specific Tenant ID (scopes the data access).
 
 ```python
 from willow import WillowClient
 
-# Initialize with your API Key
-client = WillowClient(api_key="YOUR_WILLOW_API_KEY")
-
-# Option A: Stream directly to RAM (Secure / Cloud / Ephemeral)
-# The model never touches the physical disk.
-model = client.get_model("tactical-reload-v1")
-
-# Option B: Download to Disk (Offline / Edge / Air-Gapped)
-client.download_model("tactical-reload-v1", "./models/reload.int8")
+client = WillowClient(
+    api_url="https://api.your-gateway.com",
+    api_key="sk_live_...",
+    customer_id="cust_12345"
+)
 ```
 
 ---
 
-## 2. Usage: Active Streaming (Real-Time)
+## Usage Guide
 
+### 1. Active Streaming (Real-Time)
 Best for **Robotics**, **Webcams**, or **Smart Gyms** where frames arrive one by one. The `step()` method manages an internal sliding window buffer for zero-latency triggering.
 
 ```python
 from willow import WillowClient, WillowDetector
 
-# 1. Load Model
-client = WillowClient(api_key="YOUR_API_KEY")
+# 1. Load Model (Secure RAM Stream)
+client = WillowClient(api_url="...", api_key="...", customer_id="...")
 model = client.get_model("tactical-reload-v1")
 detector = WillowDetector(model)
 
@@ -53,49 +61,33 @@ detector = WillowDetector(model)
 while True:
     current_skeleton, timestamp_ms = get_next_frame()
     
-    # .step() executes in <2ms on modern CPUs
+    # .step() executes in <2ms
     event = detector.step(current_skeleton, timestamp_ms)
     
     if event:
-        print(f"!!! ACTION DETECTED !!!")
-        print(f"Timestamp: {event['end_ms']}ms | Confidence: {event['confidence']:.2f}")
-        
+        print(f"Action Detected at {event['end_ms']}ms | Confidence: {event['confidence']:.2f}")
         # Trigger Actuator / Robot / UI here
 ```
 
----
-
-## 3. Usage: Batch Analysis (Passive)
-
-Best for **Data Science**, **Historical Video Processing**, or **Cloud ETL** pipelines.
+### 2. Batch Analysis (Passive)
+Best for **Data Science** and **Historical Video Processing**. Processes an entire sequence array at once.
 
 ```python
-from willow import WillowClient, WillowDetector
+from willow import WillowDetector, load_local_model
 import numpy as np
 
-# 1. Load Model
-client = WillowClient(api_key="YOUR_API_KEY")
-model = client.get_model("golf-swing-v4")
+# Load model from disk (Offline Mode)
+model = load_local_model("models/golf-swing-v4.int8")
 detector = WillowDetector(model)
 
-# 2. Load Data (e.g., from an uploaded video file processed by MediaPipe)
-# Shape: (Frames, 75, 3)
-full_sequence = np.load("recording_data.npy") 
-timestamps = [t * 33 for t in range(len(full_sequence))]
-
-# 3. Detect All Occurrences
+# Input: (Frames, 75, 3)
 matches = detector.detect(full_sequence, timestamps)
 
-print(f"Found {len(matches)} events:")
-for m in matches:
-    print(f" - {m['start_ms']}ms to {m['end_ms']}ms (Conf: {m['confidence']:.2f})")
+print(f"Found {len(matches)} events.")
 ```
 
----
-
-## 4. Usage: Sim-to-Real & Robotics
-
-Best for **Reinforcement Learning (RL)**, **NVIDIA Isaac Sim**, and **Humanoid Teleoperation**. Bridges the gap between Computer Vision coordinates and Robotics standards.
+### 3. Robotics & Sim-to-Real
+Bridges the gap between Computer Vision coordinates and Robotics standards for **NVIDIA Isaac Sim** or **ROS**.
 
 ```python
 from willow import CoordinateBridge, KinematicRetargeter
@@ -105,24 +97,23 @@ from willow import CoordinateBridge, KinematicRetargeter
 ros_ready_sequence = CoordinateBridge.to_ros_z_up(raw_skeleton_sequence)
 
 # 2. Extract Joint Angles for RL Training
-# Returns dictionary of 1D angle arrays (e.g., "right_elbow_flexion")
-joint_angles = KinematicRetargeter.extract_joint_angles(ros_ready_sequence)
+angles = KinematicRetargeter.extract_joint_angles(ros_ready_sequence)
 
-print(f"Extracted {len(joint_angles)} joint features for simulation training.")
+print(f"Elbow Flexion: {angles['right_elbow_flexion']}")
 ```
 
 ---
-# Documentation Sections
-1. [Model Provisioning](./docs/provisioning.md) - How to fetch and manage models.
-2. [Coordinate Transforms](./docs/transforms.md) - Bridging Willow to ROS, Unity, and Unreal.
-3. [Robotics & Retargeting](./docs/retargeting.md) - Extracting joint angles for RL & Simulation.
-4. [Physics Evaluation](./docs/evaluation.md) - Scoring form and efficiency at the edge.
-5. [Topology Map](./docs/topology.md) - The Willow 75-point joint index reference.
+
+## Documentation Sections
+- [Model Provisioning](./docs/provisioning.md) - How to fetch, cache, and manage secure models.
+- [Coordinate Transforms](./docs/transforms.md) - Bridging Willow to ROS, Unity, and Unreal.
+- [Robotics & Retargeting](./docs/retargeting.md) - Extracting joint angles for RL & Simulation.
+- [Physics Evaluation](./docs/evaluation.md) - Scoring form, smoothness, and efficiency at the edge.
+- [Topology Map](./docs/topology.md) - The Willow 75-point joint index reference.
 
 ## Support & Licensing
-Willow 5 Runtime is a paid service. A valid **Partner License** is required to fetch models from the Cloud Oracle. 
-- [Request a License](https://willowdynamics.com)
+The Willow Runtime is a premium commercial service. A **Partner License** is required to provision models.
+- [Request a License](https://willowdynamics.com/pages/licensing)
 - [Technical Support](mailto:support@willowdynamics.com)
-## License
 
-MIT License. Copyright (c) 2026 Willow Dynamics.
+&copy; 2025 Willow Dynamics. All rights reserved.

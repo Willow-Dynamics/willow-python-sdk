@@ -1,20 +1,29 @@
 import time
 import numpy as np
-from willow import WillowDetector, load_local_model
+from willow import WillowClient, WillowDetector, load_local_model
 
 def main():
     print("--- Willow 5: Live Edge Webcam Example ---")
     
     # 1. Load Model (Offline / Air-Gapped Mode)
-    # Assumes you downloaded 'model.int8' via the Client earlier.
-    print("Loading local model from disk...")
+    # For Edge Devices, we recommend downloading the model once at startup
     try:
-        model = load_local_model("model.int8")
+        # Attempt to load local cache
+        model = load_local_model("models/tactical-reload.int8")
+        print("Loaded model from local disk.")
     except FileNotFoundError:
-        print("ERROR: 'model.int8' not found.")
-        print("To run this example, please download a model first using:")
-        print("  client.download_model('your-model-id', 'model.int8')")
-        return
+        print("Local model not found. Downloading from Cloud Oracle...")
+        
+        # Provisioning Step
+        client = WillowClient(
+            api_url="https://api.willowdynamics.com",
+            api_key="sk_live_...",
+            customer_id="cust_..."
+        )
+        
+        # Save to disk for offline use
+        client.download_model("tactical-reload-v1", "models/tactical-reload.int8")
+        model = load_local_model("models/tactical-reload.int8")
 
     # 2. Setup Detector
     detector = WillowDetector(model)
@@ -36,6 +45,7 @@ def main():
             
             # 4. Step the Detector
             # This executes in <2ms on modern hardware, managing its own ring buffer internally.
+            # It uses a 1-frame delay to confirm the peak of the action accurately.
             event = detector.step(frame_skeleton, current_ts)
             
             if event:

@@ -6,9 +6,16 @@ from .transforms import CoordinateBridge
 from .retargeting import KinematicRetargeter
 from .evaluator import PhysicsEvaluator
 
-__all__ =[
-    "WillowConfig", "WillowModel", "ZONES",
-    "WillowClient", "WillowDetector",
-    "CoordinateBridge", "KinematicRetargeter", "PhysicsEvaluator",
-    "load_local_model", "parse_int8_model", "parse_json_model"
+__all__ = [
+    "WillowConfig", 
+    "WillowModel", 
+    "ZONES",
+    "WillowClient", 
+    "WillowDetector",
+    "CoordinateBridge", 
+    "KinematicRetargeter", 
+    "PhysicsEvaluator",
+    "load_local_model", 
+    "parse_int8_model", 
+    "parse_json_model"
 ]

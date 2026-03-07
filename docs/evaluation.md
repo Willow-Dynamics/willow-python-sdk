@@ -5,6 +5,10 @@ The `PhysicsEvaluator` allows you to calculate the physical derivatives of any j
 ### Path Kinematics
 Calculate the 1st, 2nd, and 3rd derivatives of motion (Speed, Acceleration, Jerk).
 
+**Requirements:**
+*   Trajectory must contain at least **3 frames** of data to calculate Jerk.
+*   Input coordinates should be in **Meters** for accurate physical units (m/s, m/s³).
+
 ```python
 from willow import PhysicsEvaluator
 

@@ -3,61 +3,79 @@ import json
 import requests
 from io import BytesIO
 from typing import Union
-
 from .types import WillowModel
 from .parsers import parse_int8_model, parse_json_model
 
 class WillowClient:
     """
     The official Willow API Client for Model Provisioning.
-    Handles secure retrieval of action recognition models for local or edge execution.
+    Handles secure retrieval of action recognition models via the Willow AWS Gateway.
+    
+    This client is strictly for fetching trained models. It does not handle
+    video uploads or cloud processing pipelines.
     """
     
-    # Defaults to the Master AWS Oracle Gateway
-    DEFAULT_API_URL = "https://55zydxbe05.execute-api.us-east-2.amazonaws.com"
-    
-    def __init__(self, api_key: str, base_url: str = DEFAULT_API_URL):
+    def __init__(self, api_url: str, api_key: str, customer_id: str):
         """
         Initializes the client.
-        :param api_key: Your Willow API Key.
-        :param base_url: The base URL of the Willow API.
+        
+        :param api_url: The endpoint URL for the Willow API Gateway.
+        :param api_key: Your secure Gateway Access Token (x-api-key or Bearer token).
+        :param customer_id: Your unique Partner/Tenant ID (scopes data access).
         """
-        self.api_key = api_key
-        self.base_url = base_url.rstrip('/')
+        if not api_url or not api_key or not customer_id:
+            raise ValueError("WillowClient requires api_url, api_key, AND customer_id.")
+            
+        self.api_url = api_url.rstrip('/')
+        self.customer_id = customer_id
+        
+        # Standardize headers for the new API Gateway
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
+            "x-api-key": api_key,  # Redundant fallback for AWS Gateway compatibility
             "Accept": "application/json"
         }
 
     def _fetch_model_payload(self, model_id: str, format_type: str) -> Union[bytes, dict]:
-        """Internal method to handle the HTTP request and Base64 decoding."""
-        url = f"{self.base_url}/export"
+        """
+        Internal method to execute the network request.
+        Handles status codes and format decoding.
+        """
+        url = f"{self.api_url}/export"
         
-        # Legacy architecture routing abstraction:
-        # 'shopifyCustomerId' acts as the API identifier credential for the Oracle backend.
+        # New Gateway Contract: Uses 'customerId' explicitly
         params = {
             "analysisId": model_id,
-            "shopifyCustomerId": self.api_key, 
+            "customerId": self.customer_id, 
             "format": format_type
         }
         
-        response = requests.get(url, params=params, headers=self.headers)
-        
-        if response.status_code != 200:
-            raise ConnectionError(f"Failed to fetch model {model_id}: {response.status_code} - {response.text}")
+        try:
+            response = requests.get(url, params=params, headers=self.headers)
+            
+            if response.status_code == 401 or response.status_code == 403:
+                raise ConnectionError(f"Authentication Failed (401/403). Check your API Key and Customer ID.")
+            
+            if response.status_code != 200:
+                raise ConnectionError(f"Failed to fetch model {model_id}: {response.status_code} - {response.text}")
 
-        if format_type == "int8":
-            # The Willow Backend returns the binary payload as a Base64 string
-            return base64.b64decode(response.text)
-        else:
-            # Standard JSON payload
-            return response.json()
+            if format_type == "int8":
+                # The backend returns binary payload as Base64 string for safe transport
+                return base64.b64decode(response.text)
+            else:
+                # Standard JSON payload
+                return response.json()
+                
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"Network error connecting to Willow API: {e}")
 
     def get_model(self, model_id: str) -> WillowModel:
         """
-        ON-DEMAND EPHEMERAL RAM: 
+        ON-DEMAND EPHEMERAL RAM (DRM): 
         Fetches the highly-optimized .int8 model directly into an ephemeral memory buffer.
         The model is parsed and ready for inference, never touching the physical disk.
+        
+        Use this for secure cloud pipelines or closed-source edge deployments.
         """
         raw_bytes = self._fetch_model_payload(model_id, format_type="int8")
         memory_buffer = BytesIO(raw_bytes)
@@ -66,9 +84,10 @@ class WillowClient:
     def download_model(self, model_id: str, dest_path: str, format_type: str = "int8") -> str:
         """
         STORE LOCALLY: 
-        Fetches the model via the API and writes it to the local disk for offline usage.
-        :param dest_path: The file path to save the model to (e.g., './models/reload.int8').
-        :param format_type: 'int8' (recommended) or 'json'.
+        Fetches the model via the API and writes it to the local disk.
+        
+        Use this for offline edge devices or air-gapped environments.
+        :param dest_path: File path (e.g., './models/reload.int8')
         """
         data = self._fetch_model_payload(model_id, format_type)
         

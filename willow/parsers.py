@@ -9,7 +9,15 @@ from .types import WillowConfig, WillowModel, ZONES
 def parse_int8_model(data: Union[bytes, BytesIO]) -> WillowModel:
     """
     Parses the secure Willow V4.0 .int8 binary format.
-    Executes entirely in RAM (Zero physical disk footprint).
+    Designed to execute in ephemeral RAM for DRM compliance.
+    
+    Header Format (Little-Endian, 24 Bytes):
+    [0-3]   uint32 : Version (40)
+    [4-7]   uint32 : Zone Bitmask
+    [8-11]  float32: De-quantization Scale
+    [12-15] float32: Overlap Tolerance
+    [16-19] float32: DTW Sensitivity
+    [20-23] float32: Tempo Variance
     """
     if isinstance(data, BytesIO):
         buffer = data.read()
@@ -17,14 +25,14 @@ def parse_int8_model(data: Union[bytes, BytesIO]) -> WillowModel:
         buffer = data
 
     if len(buffer) < 24:
-        raise ValueError("Invalid Willow Binary: Header too short.")
+        raise ValueError("Invalid Willow Binary: Header is too short (Minimum 24 bytes required).")
 
     # Strict Little-Endian 24-Byte Header parsing
     header = struct.unpack('<IIffff', buffer[:24])
     version, bitmask, scale, overlap, dtw_sens, tempo = header
 
     if version != 40:
-        raise ValueError(f"Unsupported model version: {version}. Expected 40 (V4.0).")
+        raise ValueError(f"Unsupported model version: {version}. This SDK supports Willow V4.0 models (Version ID 40).")
 
     config = WillowConfig(
         version=version,
@@ -34,22 +42,28 @@ def parse_int8_model(data: Union[bytes, BytesIO]) -> WillowModel:
         tempo_variance=tempo
     )
 
-    # Resolve dimension size from bitmask to reshape flat array
+    # Dynamically resolve feature dimension size from the bitmask
+    # Dimension = N * (N-1) / 2 where N is the count of active joints
     n_joints = sum(len(indices) for bit, indices in ZONES.values() if bitmask & bit)
     dim = int(n_joints * (n_joints - 1) / 2)
 
-    # Fast De-Quantization
+    # Fast De-Quantization: Convert int8 (-128..127) back to float32 spatial distances
     raw_int8 = np.frombuffer(buffer[24:], dtype=np.int8)
     signature = (raw_int8.astype(np.float32) / 127.0) * scale
     
-    # Reshape to (Frames, Features)
-    signature = signature.reshape(-1, dim)
+    # Reshape flattened array to (Frames, Features)
+    # If the file is truncated, this reshape will raise a ValueError, ensuring integrity
+    try:
+        signature = signature.reshape(-1, dim)
+    except ValueError:
+        raise ValueError(f"Model data corruption: Payload size does not match calculated feature dimension ({dim}).")
 
     return WillowModel(config=config, signature=signature)
 
 def parse_json_model(data: Union[str, dict]) -> WillowModel:
     """
     Fallback parser for standard web JSON signatures.
+    Useful for debugging or legacy integrations.
     """
     if isinstance(data, str):
         payload = json.loads(data)
@@ -66,13 +80,13 @@ def parse_json_model(data: Union[str, dict]) -> WillowModel:
         tempo_variance=float(cfg.get("tempo_variance", 0.20))
     )
     
-    signature = np.array(payload.get("signature",[]), dtype=np.float32)
+    signature = np.array(payload.get("signature", []), dtype=np.float32)
     return WillowModel(config=config, signature=signature)
 
 def load_local_model(filepath: str) -> WillowModel:
     """
     Loads a Willow model directly from a local file.
-    Use this if you downloaded the model manually via the Willow Web Interface.
+    Use this for offline edge devices or air-gapped environments.
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Model file not found: {filepath}")

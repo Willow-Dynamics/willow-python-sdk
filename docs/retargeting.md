@@ -9,9 +9,10 @@ The `KinematicRetargeter` calculates Euler-approximated flexion angles for criti
 from willow import KinematicRetargeter
 
 # Input: (Frames, 75, 3) array
+# Returns a dictionary of 1D numpy arrays (degrees)
 angles = KinematicRetargeter.extract_joint_angles(skeleton_sequence)
 
-# The result is a dictionary of numpy arrays
+# Access specific joint streams
 print(angles["left_elbow_flexion"]) 
 print(angles["right_knee_flexion"])
 ```

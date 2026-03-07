@@ -5,7 +5,7 @@ from willow import CoordinateBridge, KinematicRetargeter, PhysicsEvaluator
 
 def create_mock_int8_model():
     # Model: Version 40, Torso Bitmask (2), 5 frames
-    # Scale: 1.2
+    # Scale: 1.2 (Matched to synthetic test data geometry)
     header = struct.pack('<IIffff', 40, 2, 1.2, 0.25, 3.0, 0.20)
     # Features: 127 (Int8 Max) -> Dequantized to 1.2
     mock_features = np.ones((5, 6), dtype=np.int8) * 127 
@@ -22,40 +22,23 @@ def test_willow_pipeline():
     # 2. GENERATE DATA
     test_seq = np.zeros((20, 75, 3), dtype=np.float32)
     timestamps = [t * 33 for t in range(20)]
-    
-    # Base Pose (Rest)
     for f in range(20):
+        # Base Pose: Shoulder Spread 1.0, Torso Length 1.0
         test_seq[f, 11] = [-0.5, 1.5, 0.0]  # L Shoulder
         test_seq[f, 12] = [ 0.5, 1.5, 0.0]  # R Shoulder
-        test_seq[f, 23] = [-0.3, 0.5, 0.0]  # L Hip (Torso Len = 1.0)
+        test_seq[f, 23] = [-0.3, 0.5, 0.0]  # L Hip
         test_seq[f, 24] = [ 0.3, 0.5, 0.0]  # R Hip
         
-        # Inject Perfect Match at frames 8-12
+        # Action Injection: Wider Shoulders/Hips to match Model Scale (1.2)
         if 8 <= f <= 12:
-            # We need Normalized Distances = 1.2
-            # Torso Length = 1.0 (Shoulder Y 1.5 - Hip Y 0.5)
-            # So we need Absolute Distances = 1.2
-            
-            # Widen Shoulders to 1.2 width (-0.6 to 0.6)
             test_seq[f, 11] = [-0.6, 1.5, 0.0]
             test_seq[f, 12] = [ 0.6, 1.5, 0.0]
-            
-            # Widen Hips to 1.2 width (-0.6 to 0.6)
-            test_seq[f, 23] = [-0.6, 0.5, 0.0]
+            test_seq[f, 23] = [-0.6, 0.5, 0.0] 
             test_seq[f, 24] = [ 0.6, 0.5, 0.0]
-            
-            # Vertical Dists (11-23) = 1.0. 
-            # This will result in features [1.2, 1.2, 1.0, 1.0, 1.56, 1.56]
-            # This is closer to the model [1.2, 1.2, 1.2, 1.2, 1.2, 1.2]
-            # than the previous data.
 
     # 3. DETECTOR (PASSIVE BATCH)
     detector = WillowDetector(model)
     batch_detections = detector.detect(test_seq, timestamps)
-    
-    if len(batch_detections) == 0:
-        print("DEBUG: No detections found. Check NMS logic or Data Scaling.")
-        
     assert len(batch_detections) > 0
     print("✓ Passive Batch Detection Passed")
 
@@ -72,8 +55,7 @@ def test_willow_pipeline():
 
     # 5. SPATIAL TRANSFORMS
     ros_seq = CoordinateBridge.to_ros_z_up(test_seq)
-    # Check Y -> -Z translation (1.5 becomes -1.5)
-    assert ros_seq[0, 11, 2] == -1.5 
+    assert ros_seq[0, 11, 2] == -1.5 # Y -> -Z translation
     print("✓ Coordinate Bridging Passed")
 
     # 6. KINEMATIC RETARGETING

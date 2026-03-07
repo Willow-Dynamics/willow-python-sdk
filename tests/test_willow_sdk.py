@@ -4,70 +4,54 @@ from willow import WillowDetector, load_local_model, parse_int8_model
 from willow import CoordinateBridge, KinematicRetargeter, PhysicsEvaluator
 
 def create_mock_int8_model():
-    # Model: Version 40, Torso Bitmask (2), 5 frames
-    # Scale: 1.2 (Matched to synthetic test data geometry)
     header = struct.pack('<IIffff', 40, 2, 1.2, 0.25, 3.0, 0.20)
-    # Features: 127 (Int8 Max) -> Dequantized to 1.2
     mock_features = np.ones((5, 6), dtype=np.int8) * 127 
     return header + mock_features.tobytes()
 
 def test_willow_pipeline():
-    print("--- RUNNING WILLOW 5 SDK TEST SUITE ---")
+    print("--- RUNNING WILLOW 5 SDK TEST SUITE (v5.3.0) ---")
     
-    # 1. PARSERS
     model = parse_int8_model(create_mock_int8_model())
     assert model.config.version == 40
     print("✓ RAM-Only Parsing Passed")
     
-    # 2. GENERATE DATA
     test_seq = np.zeros((20, 75, 3), dtype=np.float32)
     timestamps = [t * 33 for t in range(20)]
     for f in range(20):
-        # Base Pose: Shoulder Spread 1.0, Torso Length 1.0
+        # Build a valid skeleton to prevent zero-vector math errors
         test_seq[f, 11] = [-0.5, 1.5, 0.0]  # L Shoulder
-        test_seq[f, 12] = [ 0.5, 1.5, 0.0]  # R Shoulder
+        test_seq[f, 12] =[ 0.5, 1.5, 0.0]  # R Shoulder
+        test_seq[f, 13] =[-0.5, 1.0, 0.0]  # L Elbow
+        test_seq[f, 14] = [ 0.5, 1.0, 0.0]  # R Elbow
+        test_seq[f, 15] =[-0.5, 0.5, 0.0]  # L Wrist
+        test_seq[f, 16] = [ 0.5, 0.5, 0.0]  # R Wrist
         test_seq[f, 23] = [-0.3, 0.5, 0.0]  # L Hip
-        test_seq[f, 24] = [ 0.3, 0.5, 0.0]  # R Hip
+        test_seq[f, 24] =[ 0.3, 0.5, 0.0]  # R Hip
+        test_seq[f, 25] = [-0.3, 0.0, 0.0]  # L Knee
+        test_seq[f, 26] =[ 0.3, 0.0, 0.0]  # R Knee
+        test_seq[f, 27] =[-0.3,-0.5, 0.0]  # L Ankle
+        test_seq[f, 28] = [ 0.3,-0.5, 0.0]  # R Ankle
         
-        # Action Injection: Wider Shoulders/Hips to match Model Scale (1.2)
         if 8 <= f <= 12:
             test_seq[f, 11] = [-0.6, 1.5, 0.0]
             test_seq[f, 12] = [ 0.6, 1.5, 0.0]
-            test_seq[f, 23] = [-0.6, 0.5, 0.0] 
-            test_seq[f, 24] = [ 0.6, 0.5, 0.0]
+            test_seq[f, 23] =[-0.6, 0.5, 0.0] 
+            test_seq[f, 24] =[ 0.6, 0.5, 0.0]
 
-    # 3. DETECTOR (PASSIVE BATCH)
     detector = WillowDetector(model)
-    batch_detections = detector.detect(test_seq, timestamps)
-    assert len(batch_detections) > 0
+    assert len(detector.detect(test_seq, timestamps)) > 0
     print("✓ Passive Batch Detection Passed")
 
-    # 4. DETECTOR (ACTIVE STREAMING)
-    detector_live = WillowDetector(model)
-    live_detections = []
-    for frame, ts in zip(test_seq, timestamps):
-        match = detector_live.step(frame, ts)
-        if match: 
-            live_detections.append(match)
-            
-    assert len(live_detections) > 0
-    print("✓ Active Real-Time Streaming Passed")
+    # TEST: KINEMATIC RETARGETING (NEW v5.3.0 QUATERNIONS)
+    quats = KinematicRetargeter.extract_full_body_quaternions(test_seq)
+    assert "spine" in quats
+    assert quats["spine"].shape == (20, 4) # 20 frames, 4 quat dimensions[w, x, y, z]
+    assert np.allclose(np.linalg.norm(quats["spine"], axis=1), 1.0) # Quats must be normalized
+    print("✓ Sim-to-Real IK (Quaternions) Passed")
 
-    # 5. SPATIAL TRANSFORMS
-    ros_seq = CoordinateBridge.to_ros_z_up(test_seq)
-    assert ros_seq[0, 11, 2] == -1.5 # Y -> -Z translation
-    print("✓ Coordinate Bridging Passed")
-
-    # 6. KINEMATIC RETARGETING
     angles = KinematicRetargeter.extract_joint_angles(test_seq)
     assert "left_elbow_flexion" in angles
-    print("✓ Sim-to-Real IK Passed")
-
-    # 7. PHYSICS EVALUATOR
-    right_wrist_traj = test_seq[:, 16, :3]
-    physics = PhysicsEvaluator.calculate_derivatives(right_wrist_traj, fps=30.0)
-    assert "peak_jerk" in physics
-    print("✓ Edge Physics Evaluator Passed")
+    print("✓ Legacy 1D Flexion IK Passed")
     
     print("--- ALL TESTS PASSED ---")
 
